@@ -1,7 +1,6 @@
 from random import randint
 
-from mongoprocessing import MongoRepository, WatchBuilder, ProcessRequirement
-
+from mongoprocessing import MongoRepository, MongoWatch, ProcessRequirement
 
 uri = 'mongodb://user:pw@ip:port,ip:port,ip:port/admin?replicaSet=rs1'
 repo = MongoRepository(uri, 'demo', 'items')
@@ -16,7 +15,7 @@ def process_one(doc):
     return True, results
 
 
-created_watch = WatchBuilder(repo).listen_to('insert')
+created_watch = MongoWatch(repo, 'insert')
 created_watch.start_worker('one', acknowledge_one, process_one)
 
 
@@ -35,7 +34,7 @@ def process_two(doc):
 
 
 one_requirement = ProcessRequirement('one')
-one_watch = WatchBuilder(repo).listen_to('update').add_process_requirement(one_requirement)
+one_watch = MongoWatch(repo, 'update', one_requirement)
 one_watch.start_worker('two', acknowledge_two, process_two)
 
 
@@ -54,5 +53,5 @@ def process_three(doc):
 
 
 two_requirement = ProcessRequirement('two', True, 'c')
-two_watch = WatchBuilder(repo).listen_to('update').listen_to('replace').add_process_requirement(two_requirement)
+two_watch = MongoWatch(repo, 'update', two_requirement)
 two_watch.start_worker('three', acknowledge_three, process_three)
