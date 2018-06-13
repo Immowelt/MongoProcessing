@@ -1,5 +1,7 @@
-import sys
-import threading
+from threading import Thread
+
+import helper
+from RunningWorker import RunningWorker
 
 
 class ProcessRequirement:
@@ -27,6 +29,10 @@ class MongoWatch:
         self._operation_type = operation_type
         self._process_requirements = process_dependencies
 
+        self._running_workers = {}
+
+        self._logger = helper.get_log()
+
     def start_worker(self, name, acknowledge_callback, process_callback, resume=True):
         """
         Start a new worker.
@@ -36,12 +42,39 @@ class MongoWatch:
         :param process_callback: A function that takes a document as a parameter and returns two values: A boolean
         indicating whether the process executed successfully and a dictionary containing all results
         :param resume: Whether to resume the stream from where it stopped last time
-        :return: The WatchBuilder itself to allow registering multiple (parallel) workers
         """
 
-        threading.Thread(target=self._run_watch_thread, args=[name, acknowledge_callback, process_callback]).start()
+        if name in self._running_workers:
+            self._logger.error('Worker {} is already running!'.format(name))
+            raise Exception('Worker {} is already running!'.format(name))
 
-        return self
+        match = self._get_filter(name)
+        running_worker = RunningWorker(name, acknowledge_callback, process_callback, self._mongo_repository, match,
+                                       resume)
+        self._running_workers[name] = running_worker
+
+        running_worker.start()
+
+    def stop_all(self):
+        self._logger.info('Stopping all workers')
+
+        stop_tasks = []
+
+        for worker in self._running_workers:
+            task = Thread(target=self._stop_task, args=[worker])
+            stop_tasks.append(task)
+            task.start()
+
+        for task in stop_tasks:
+            task.join()
+
+        self._running_workers = {}
+
+        self._logger.info('Successfully stopped all workers')
+
+    def _stop_task(self, worker):
+        self._running_workers[worker].stop()
+        del self._running_workers[worker]
 
     def _get_filter(self, name):
         match = {'operationType': self._operation_type}
@@ -118,35 +151,3 @@ class MongoWatch:
         }
 
         return or_dict
-
-    def _run_watch_thread(self, name, acknowledge_callback, process_callback):
-        match = self._get_filter(name)
-        with self._mongo_repository.watch(match) as stream:
-            sys.stdout.write('Worker "{}" started successfully\n'.format(name))
-            for doc in stream:
-                if doc is not None:
-                    threading.Thread(target=self._run_process_thread,
-                                     args=[doc, name, acknowledge_callback, process_callback]).start()
-
-    def _run_process_thread(self, doc, name, acknowledge_callback, process_callback):
-        document = doc['fullDocument']
-        is_running = False
-
-        if name in document:
-            is_running = document[name]["isRunning"]
-
-        if not is_running:
-            if acknowledge_callback(document):
-                self._mongo_repository.start_process(document["_id"], name)
-
-                success = False
-                results = {}
-
-                try:
-                    success, results = process_callback(document)
-                except:
-                    sys.stdout.write('An error occured while executing process {}:\n'.format(name))
-                    sys.stdout.write('{}\n'.format(sys.exc_info()[0]))
-
-                self._mongo_repository.end_process(document['_id'], name, success, results)
-                self._mongo_repository.save_resume_token(doc)

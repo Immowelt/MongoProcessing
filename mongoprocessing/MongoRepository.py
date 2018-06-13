@@ -1,9 +1,11 @@
+import cPickle as pickle
 import os
-import pickle
-import threading
 import time
+from threading import Lock, Thread
 
 from pymongo import MongoClient
+
+import helper
 
 
 class MongoRepository:
@@ -19,9 +21,19 @@ class MongoRepository:
         db = client[database]
         self._coll = db[collection]
         self._time_fields = list(time_fields)
-        self._save_lock = threading.Lock()
+        self._save_lock = Lock()
         self._last_save = time.time()
         self._save_interval = 5
+        self._logger = helper.get_log()
+
+    def get(self, key, value):
+        """
+        Get all documents from the collection that match document[key] == value
+        :param key: The name of the key
+        :param value: The value that the property must have
+        :return: Instance of cursor corresponding to the query
+        """
+        return self._coll.find({key: value})
 
     def get_by_id(self, doc_id):
         """
@@ -38,15 +50,6 @@ class MongoRepository:
         :return: Instance of cursor corresponding to the query
         """
         return self._coll.find({'_id': {'$in': ids}})
-
-    def get(self, key, value):
-        """
-        Get all documents from the collection that match document[key] == value
-        :param key: The name of the key
-        :param value: The value that the property must have
-        :return: Instance of cursor corresponding to the query
-        """
-        return self._coll.find({key: value})
 
     def insert(self, doc_id, doc):
         """
@@ -71,6 +74,20 @@ class MongoRepository:
 
         self._coll.update_one({'_id': doc_id}, update_dict, upsert=True)
 
+    def update_key_value(self, doc_id, key, value, *time_fields):
+        """
+        Updates a document and (optionally) updates timestamps in the document.
+        :param doc_id: The ID of the document to update
+        :param key: The key of the property to update
+        :param value: The new value of the given property
+        :param time_fields: All properties that should have their value set to the current time
+        """
+
+        update_dict = self._get_base_update_dict(*time_fields)
+        update_dict['$set'] = {key: value}
+
+        self._coll.update_one({'_id': doc_id}, update_dict, upsert=True)
+
     def increment(self, doc_id, key, value, *time_fields):
         """
         Increment the value of a property in a document.
@@ -84,6 +101,18 @@ class MongoRepository:
 
         self._coll.update_one({'_id': doc_id}, update_dict, upsert=True)
 
+    def add_to_set(self, doc_id, key, value, *time_fields):
+        """
+        Adds the given value to the set with the given key.
+        :param doc_id: The ID of the document to update
+        :param key: The key of the set
+        :param value: The value to add to the set
+        :param time_fields: All properties that should have their value set to the current time
+        """
+        update_dict = self._get_base_update_dict(*time_fields)
+        update_dict['$addToSet'] = {key: value}
+        self._coll.update_one({'_id': doc_id}, update_dict)
+
     def watch(self, match, resume=True):
         """
         Watch the collection using a filter.
@@ -91,12 +120,26 @@ class MongoRepository:
         :param resume: Whether to resume the stream from where it stopped last time
         :return: A stream of documents as they get inserted/replaced/updated
         """
+
         if resume:
             resume_token = self._load_resume_token()
             if resume_token is not None:
-                return self._coll.watch([{'$match': match}], full_document='updateLookup', resume_after=resume_token)
+                try:
+                    self._logger.info('Successfully loaded resume token')
+                    watch = self._coll.watch([{'$match': match}], full_document='updateLookup',
+                                             resume_after=resume_token)
+                    self._logger.info('Successfully resumed watch')
+                    return watch
 
-        return self._coll.watch([{'$match': match}], full_document='updateLookup')
+                except:
+                    self._logger.exception('Unable to resume, probably because the oplog is too small. Try again '
+                                           'without resuming...')
+
+                    return self.watch(match, resume=False)
+
+        watch = self._coll.watch([{'$match': match}], full_document='updateLookup')
+        self._logger.info('Successfully started watch')
+        return watch
 
     def start_process(self, doc_id, process_name, *time_fields):
         """
@@ -130,6 +173,9 @@ class MongoRepository:
 
         self.update(doc_id, updates, *all_time_fields)
 
+    def register_time_field(self, *time_fields):
+        self._time_fields.extend(time_fields)
+
     def _get_base_update_dict(self, *time_fields):
         update_dict = dict()
 
@@ -150,22 +196,26 @@ class MongoRepository:
         return update_dict
 
     def save_resume_token(self, doc):
-        threading.Thread(target=self._save_resume_token, args=[doc.get('_id')]).start()
-
-    def _save_resume_token(self, resume_token):
         if self._save_lock.acquire():
-            if time.time() - self._last_save > self._save_interval:
-                with open('resume_token', 'wb') as token_file:
-                    pickle.dump(resume_token, token_file)
-                self._last_save = time.time()
+            Thread(target=self._save_resume_token, args=[doc]).start()
             self._save_lock.release()
+
+    def _save_resume_token(self, doc):
+        if time.time() - self._last_save > self._save_interval:
+            resume_token = doc.get('_id')
+            with open('resume_token.bin', 'wb') as token_file:
+                pickle.dump(resume_token, token_file)
+            self._last_save = time.time()
 
     def _load_resume_token(self):
         resume_token = None
         if self._save_lock.acquire():
-            if os.path.exists('resume_token'):
-                with open('resume_token', 'r') as token_file:
-                    resume_token = pickle.load(token_file)
+            try:
+                if os.path.exists('resume_token'):
+                    with open('resume_token.bin', 'rb') as token_file:
+                        resume_token = pickle.load(token_file)
+            except:
+                self._logger.exception('Unable to load resume token')
             self._save_lock.release()
         else:
             raise IOError('Unable to acquire lock for loading resume token!')
