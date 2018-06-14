@@ -1,6 +1,6 @@
 from random import randint
 
-from mongoprocessing import MongoRepository, MongoWatch, ProcessRequirement
+from mongoprocessing import MongoRepository, MongoWatch, ProcessDependency
 
 uri = 'mongodb://user:pw@ip:port,ip:port,ip:port/admin?replicaSet=rs1'
 repo = MongoRepository(uri, 'demo', 'items')
@@ -33,8 +33,9 @@ def process_two(doc):
     return True, results
 
 
-one_requirement = ProcessRequirement('one')
-one_watch = MongoWatch(repo, 'update', one_requirement)
+one_dependency = ProcessDependency('one')
+one_watch = MongoWatch(repo, 'update')
+one_watch.add_process_dependencies(one_dependency)
 one_watch.start_worker('two', acknowledge_two, process_two)
 
 
@@ -52,6 +53,7 @@ def process_three(doc):
     return True, results
 
 
-two_requirement = ProcessRequirement('two', True, 'c')
-two_watch = MongoWatch(repo, 'update', two_requirement)
+two_dependency = ProcessDependency('two', True, 'c')
+two_watch = MongoWatch(repo, 'update')
+two_watch.add_process_dependencies(two_dependency)
 two_watch.start_worker('three', acknowledge_three, process_three)

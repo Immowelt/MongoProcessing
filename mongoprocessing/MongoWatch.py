@@ -4,7 +4,7 @@ import helper
 from RunningWorker import RunningWorker
 
 
-class ProcessRequirement:
+class ProcessDependency:
     def __init__(self, process_name, trigger_if_rerun=True, *required_results):
         """
         Create a new process requirement. Use WatchBuilder.add_process_requirement() to add it to the watch.
@@ -18,20 +18,49 @@ class ProcessRequirement:
 
 
 class MongoWatch:
-    def __init__(self, mongo_repository, operation_type, *process_dependencies):
+    def __init__(self, mongo_repository, operation_type):
         """
         Create a watch builder. Supplies various methods to add conditions for when the watch should trigger.
         :param mongo_repository: A MongoRepository connected to an existing collection
         :param operation_type: Any of the following: 'insert', 'replace' or 'update'
-        :param process_dependencies: One or multiple ProcessRequirement objects
         """
         self._mongo_repository = mongo_repository
         self._operation_type = operation_type
-        self._process_requirements = process_dependencies
 
+        self._required_keys = []
+        self._required_values = []
+        self._process_dependencies = []
         self._running_workers = {}
 
         self._logger = helper.get_log()
+
+    def add_process_dependencies(self, *process_dependencies):
+        """
+        Add ProcessDependencies to the watch.
+        :param process_dependencies: One or multiple ProcessDependency objects
+        :return: The MongoWatch object itself to allow method chaining
+        """
+        self._process_dependencies.extend(process_dependencies)
+        return self
+
+    def add_required_keys(self, *keys):
+        """
+        To trigger the watch, the given key must exist.
+        :param keys: One or multiple keys that must exist
+        :return: The MongoWatch object itself to allow method chaining
+        """
+        self._required_keys.extend(keys)
+        return self
+
+    def add_required_value(self, key, value):
+        """
+        To trigger the watch, the given key must exist and have the given value.
+        :param key: The key of the property
+        :param value: The value that the property must have
+        :return: The MongoWatch object itself to allow method chaining
+        """
+        self._required_values[key] = value
+        return self
 
     def start_worker(self, name, acknowledge_callback, process_callback, resume=True):
         """
@@ -83,8 +112,16 @@ class MongoWatch:
 
         outer_and_list = []
 
-        if self._process_requirements is not None and len(self._process_requirements) > 0:
-            for process in self._process_requirements:
+        if self._required_keys is not None and len(self._required_keys) > 0:
+            for required_key in self._required_keys:
+                match['fullDocument.{}'.format(required_key)] = {'$exists': True}
+
+        if self._required_values is not None and len(self._required_values) > 0:
+            for key in self._required_values:
+                match['fullDocument.{}'.format(key)] = self._required_values[key]
+
+        if self._process_dependencies is not None and len(self._process_dependencies) > 0:
+            for process in self._process_dependencies:
                 match['fullDocument.{}.success'.format(process.process_name)] = True
 
                 if self._operation_type == 'update':
