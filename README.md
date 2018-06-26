@@ -1,5 +1,7 @@
 # Mongo Processing
 
+Readme out of date
+
 A simple library for developing workflows using MongoDB Change Streams.
 
 ## Usage
