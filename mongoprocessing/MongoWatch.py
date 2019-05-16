@@ -1,8 +1,6 @@
 from threading import Thread
 
-import helper
 from RunningWorker import RunningWorker
-
 
 class ProcessDependency:
     def __init__(self, process_name, trigger_if_rerun=True, *required_results):
@@ -24,15 +22,15 @@ class MongoWatch:
         :param mongo_repository: A MongoRepository connected to an existing collection
         :param operation_type: Any of the following: 'insert', 'replace' or 'update'
         """
-        self._mongo_repository = mongo_repository
-        self._operation_type = operation_type
+        self.mongo_repository = mongo_repository
+        self.operation_type = operation_type
 
-        self._required_keys = []
-        self._required_values = {}
-        self._process_dependencies = []
-        self._running_workers = {}
+        self.required_keys = []
+        self.required_values = {}
+        self.process_dependencies = []
+        self.running_workers = {}
 
-        self._logger = helper.get_log()
+        self.logger = mongo_repository.logger
 
     def add_process_dependencies(self, *process_dependencies):
         """
@@ -40,7 +38,7 @@ class MongoWatch:
         :param process_dependencies: One or multiple ProcessDependency objects
         :return: The MongoWatch object itself to allow method chaining
         """
-        self._process_dependencies.extend(process_dependencies)
+        self.process_dependencies.extend(process_dependencies)
         return self
 
     def add_required_keys(self, *keys):
@@ -49,7 +47,7 @@ class MongoWatch:
         :param keys: One or multiple keys that must exist
         :return: The MongoWatch object itself to allow method chaining
         """
-        self._required_keys.extend(keys)
+        self.required_keys.extend(keys)
         return self
 
     def add_required_value(self, key, value):
@@ -59,7 +57,7 @@ class MongoWatch:
         :param value: The value that the property must have
         :return: The MongoWatch object itself to allow method chaining
         """
-        self._required_values[key] = value
+        self.required_values[key] = value
         return self
 
     def start_worker(self, name, acknowledge_callback, process_callback, resume=True):
@@ -73,23 +71,23 @@ class MongoWatch:
         :param resume: Whether to resume the stream from where it stopped last time
         """
 
-        if name in self._running_workers:
-            self._logger.error('Worker {} is already running!'.format(name))
+        if name in self.running_workers:
+            self.logger.error('Worker {} is already running!'.format(name))
             raise Exception('Worker {} is already running!'.format(name))
 
         match = self._get_filter(name)
-        running_worker = RunningWorker(name, acknowledge_callback, process_callback, self._mongo_repository, match,
+        running_worker = RunningWorker(name, acknowledge_callback, process_callback, self.mongo_repository, match,
                                        resume)
-        self._running_workers[name] = running_worker
+        self.running_workers[name] = running_worker
 
         running_worker.start()
 
     def stop_all(self):
-        self._logger.info('Stopping all workers')
+        self.logger.info('Stopping all workers')
 
         stop_tasks = []
 
-        for worker in self._running_workers:
+        for worker in self.running_workers:
             task = Thread(target=self._stop_task, args=[worker])
             stop_tasks.append(task)
             task.start()
@@ -97,32 +95,32 @@ class MongoWatch:
         for task in stop_tasks:
             task.join()
 
-        self._running_workers = {}
+        self.running_workers = {}
 
-        self._logger.info('Successfully stopped all workers')
+        self.logger.info('Successfully stopped all workers')
 
     def _stop_task(self, worker):
-        self._running_workers[worker].stop()
-        del self._running_workers[worker]
+        self.running_workers[worker].stop()
+        del self.running_workers[worker]
 
     def _get_filter(self, name):
-        match = {'operationType': self._operation_type}
+        match = {'operationType': self.operation_type}
 
         or_filters = [{'fullDocument.{}'.format(name): {'$exists': False}}]
 
         outer_and_list = []
 
-        for required_key in self._required_keys:
+        for required_key in self.required_keys:
             match['fullDocument.{}'.format(required_key)] = {'$exists': True}
 
-        for key in self._required_values:
-            match['fullDocument.{}'.format(key)] = self._required_values[key]
+        for key in self.required_values:
+            match['fullDocument.{}'.format(key)] = self.required_values[key]
 
-        if self._process_dependencies is not None and len(self._process_dependencies) > 0:
-            for process in self._process_dependencies:
+        if self.process_dependencies is not None and len(self.process_dependencies) > 0:
+            for process in self.process_dependencies:
                 match['fullDocument.{}.success'.format(process.process_name)] = True
 
-                if self._operation_type == 'update':
+                if self.operation_type == 'update':
                     success_true = self._equals_dot_workaround('{}.success'.format(process.process_name), True)
                     outer_and_list.append(success_true)
 
