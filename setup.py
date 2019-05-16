@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='mongoprocessing',
-      version='0.4.0',
+      version='0.4.1',
       description='A simple library for developing workflows using MongoDB Change Streams.',
       long_description_content_type="text/markdown",
       url='https://github.com/Immowelt/MongoProcessing',
