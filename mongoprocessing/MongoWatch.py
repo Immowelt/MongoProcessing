@@ -28,7 +28,7 @@ class MongoWatch:
         self._operation_type = operation_type
 
         self._required_keys = []
-        self._required_values = []
+        self._required_values = {}
         self._process_dependencies = []
         self._running_workers = {}
 
@@ -112,13 +112,11 @@ class MongoWatch:
 
         outer_and_list = []
 
-        if self._required_keys is not None and len(self._required_keys) > 0:
-            for required_key in self._required_keys:
-                match['fullDocument.{}'.format(required_key)] = {'$exists': True}
+        for required_key in self._required_keys:
+            match['fullDocument.{}'.format(required_key)] = {'$exists': True}
 
-        if self._required_values is not None and len(self._required_values) > 0:
-            for key in self._required_values:
-                match['fullDocument.{}'.format(key)] = self._required_values[key]
+        for key in self._required_values:
+            match['fullDocument.{}'.format(key)] = self._required_values[key]
 
         if self._process_dependencies is not None and len(self._process_dependencies) > 0:
             for process in self._process_dependencies:
