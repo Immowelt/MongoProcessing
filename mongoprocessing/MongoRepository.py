@@ -205,7 +205,7 @@ class MongoRepository:
     def _save_resume_token(self, doc):
         if time.time() - self.last_save > self.save_interval:
             resume_token = doc.get('_id')
-            with open('resume_token.bin', 'wb') as token_file:
+            with open(self.resume_token_path, 'wb') as token_file:
                 pickle.dump(resume_token, token_file)
             self.last_save = time.time()
 
@@ -213,9 +213,8 @@ class MongoRepository:
         resume_token = None
         if self.save_lock.acquire():
             try:
-                if os.path.exists('resume_token.bin'):
-                    with open('resume_token.bin', 'rb') as token_file:
-                        resume_token = pickle.load(token_file)
+                with open(self.resume_token_path, 'rb') as token_file:
+                    resume_token = pickle.load(token_file)
             except:
                 self.logger.exception('Unable to load resume token')
             self.save_lock.release()
