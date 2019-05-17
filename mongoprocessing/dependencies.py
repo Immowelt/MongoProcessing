@@ -117,7 +117,7 @@ class MultipleDependency(object):
     def _add_match_condition(self, name, match, outer_and_list, or_filters, op_type):
         for dependency in self._children:
             if op_type in dependency.operation_types:
-                dependency._add_match_condition(name, match, outer_and_list, or_filters)
+                dependency._add_match_condition(name, match, outer_and_list, or_filters, op_type)
 
     def __len__(self):
         return len(self._children)
