@@ -110,7 +110,7 @@ class MultipleDependency(object):
         return set([y for x in self._children for y in x.operation_types])
 
     def add_dependency(self, dependency):
-        self._children.extend(dependency)
+        self._children.add(dependency)
         if 'update' in self.operation_types and 'replace' in self.operation_types:
             logging.warning('MongoWatch contains both update and replace dependencies which can lead to data loss')
 
