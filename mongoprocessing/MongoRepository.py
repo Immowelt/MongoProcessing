@@ -7,7 +7,7 @@ from threading import Lock, Thread
 from pymongo import MongoClient
 
 
-class MongoRepository:
+class MongoRepository(object):
     def __init__(self, connection_string, database, collection, resume_token_path='resume_token.bin', logger_name=None, *time_fields):
         """
         MongoCollection wrapper class to allow easy specialized updates.

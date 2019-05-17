@@ -2,7 +2,7 @@ import time
 from threading import Thread
 
 
-class RunningWorker:
+class RunningWorker(object):
     def __init__(self, name, acknowledge_callback, process_callback, mongo_repository, match, resume=True):
         self.name = name
         self.acknowledge_callback = acknowledge_callback

@@ -1,2 +1,3 @@
 from MongoRepository import MongoRepository
-from MongoWatch import MongoWatch, ProcessDependency
+from MongoWatch import MongoWatch
+from dependencies import *
