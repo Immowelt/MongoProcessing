@@ -8,7 +8,6 @@ class MongoWatch(object):
         """
         Create a watch builder. Supplies various methods to add conditions for when the watch should trigger.
         :param mongo_repository: A MongoRepository connected to an existing collection
-        :param operation_type: Any of the following: 'insert', 'replace' or 'update'
         """
         self.mongo_repository = mongo_repository
 

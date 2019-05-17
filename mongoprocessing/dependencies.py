@@ -78,7 +78,7 @@ class ProcessDependency(object):
     def _add_match_condition(self, name, match, outer_and_list, or_filters, op_type):
         match['fullDocument.{}.success'.format(self.process_name)] = True
 
-        if self.operation_type == 'update':
+        if op_type == 'update':
             success_true = self._equals_dot_workaround('{}.success'.format(self.process_name), True)
             outer_and_list.append(success_true)
 
