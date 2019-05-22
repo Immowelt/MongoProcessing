@@ -134,7 +134,7 @@ class MongoRepository(object):
                     return watch
 
                 except:
-                    self.logger.exception('Unable to resume, probably because the oplog is too small. Try again '
+                    self.logger.warning('Unable to resume, probably because the oplog is too small. Trying again '
                                            'without resuming...')
 
                     return self.watch(match, resume=False)
